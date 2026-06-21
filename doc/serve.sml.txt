@@ -1,0 +1,146 @@
+(* doc/serve.sml.txt -- REFERENCE SKETCH, NOT COMPILED.
+
+   This is an illustrative, MLton-only socket adapter that drives a pure
+   `Web.app` (from sml-web) using the sml-async event loop. It is deliberately
+   shipped as plain text: it depends on MLton's `Socket`/`OS` structures and a
+   live network, which is exactly the impure, non-deterministic edge that the
+   rest of the sjqtentacles web stack keeps out of its portable core.
+
+   It is written to read clearly, not to be a hardened server. A production
+   adapter would add timeouts, connection limits, backpressure, request-size
+   caps (compose `Middleware.limitBody` into the app for that), graceful
+   shutdown, and TLS termination.
+
+   Assumed in scope (vendored like every other repo):
+     - structure Web        from sml-web         (Web.app, Web.runString, ...)
+     - structure Http       from sml-http        (parse/serialize, decodeBody)
+     - structure Headers    from sml-http
+     - structure Async      from sml-async       ('a async, bind, start, ...)
+     - structure Scheduler  from sml-async
+   plus MLton's Basis `Socket`, `INetSock`, `Word8VectorSlice`, `Byte`. *)
+
+structure Serve =
+struct
+  infix >>= ;  val op>>= = Async.>>=
+
+  (* ---- byte <-> string helpers over MLton sockets ---- *)
+
+  fun toBytes (s : string) : Word8Vector.vector =
+    Byte.stringToBytes s
+
+  fun sendAll sock (s : string) : unit =
+    let
+      val v = toBytes s
+      fun go i =
+        if i >= Word8Vector.length v then ()
+        else
+          let
+            val sent =
+              Socket.sendVec (sock, Word8VectorSlice.slice (v, i, NONE))
+          in
+            go (i + sent)
+          end
+    in
+      go 0
+    end
+
+  (* Read one full HTTP/1.1 message: headers up to CRLFCRLF, then a body sized
+     by the headers. Uses the pure framing decoder Http.decodeBody. Returns the
+     complete message string, or NONE on EOF before a full head. *)
+  fun readMessage sock : string option =
+    let
+      fun recvChunk () =
+        let val v = Socket.recvVec (sock, 4096)
+        in if Word8Vector.length v = 0 then NONE
+           else SOME (Byte.bytesToString v)
+        end
+
+      (* accumulate until we've seen the header terminator *)
+      fun readHead acc =
+        case acc of
+            _ =>
+              (case String.isSubstring "\r\n\r\n" acc of
+                   true => SOME acc
+                 | false =>
+                     (case recvChunk () of
+                          NONE => if acc = "" then NONE else SOME acc
+                        | SOME more => readHead (acc ^ more)))
+    in
+      case readHead "" of
+          NONE => NONE
+        | SOME buf =>
+            (* Split head/body, then let the pure decoder pull the right body
+               length; read more from the socket if the body is short. *)
+            let
+              val sep = "\r\n\r\n"
+              val idx = valOf (Substring.first
+                          (Substring.position sep (Substring.full buf)))
+                        handle _ => 0
+            in
+              (* For brevity the sketch assumes the first read holds the whole
+                 message; a real impl would loop reading until Http.decodeBody
+                 returns SOME on the (headers, rest) pair. *)
+              SOME buf
+            end
+    end
+
+  (* Decide keep-alive per RFC 9112: HTTP/1.1 defaults to keep-alive unless
+     `Connection: close`; HTTP/1.0 the reverse. *)
+  fun keepAlive (req : Http.request) : bool =
+    case Headers.get (#headers req) "connection" of
+        SOME c => not (String.isSubstring "close" (String.map Char.toLower c))
+      | NONE => #version req = "HTTP/1.1"
+
+  (* Serve one accepted connection: read -> dispatch (pure) -> write, looping
+     while keep-alive holds. *)
+  fun handleConn app sock : unit Async.async =
+    let
+      fun loop () =
+        Async.delay (fn () => readMessage sock) >>= (fn msgOpt =>
+          case msgOpt of
+              NONE => Async.delay (fn () => Socket.close sock)
+            | SOME raw =>
+                let
+                  val (res, alive) =
+                    case Http.parseRequest raw of
+                        NONE => (Http.text 400 "Bad Request", false)
+                      | SOME req =>
+                          (Web.run app req, keepAlive req)
+                  val wire = Http.serializeResponse res
+                in
+                  Async.delay (fn () => sendAll sock wire) >>= (fn () =>
+                    if alive then loop ()
+                    else Async.delay (fn () => Socket.close sock))
+                end)
+    in
+      loop ()
+    end
+
+  (* Bind a listener and accept forever, spawning one async task per client so
+     a slow connection can't starve the others. *)
+  fun serve { host : string, port : int } (app : Web.app) : unit Async.async =
+    let
+      val listener = INetSock.TCP.socket ()
+      val addr = INetSock.any port  (* bind on all interfaces; ignore host for brevity *)
+      val () = Socket.Ctl.setREUSEADDR (listener, true)
+      val () = Socket.bind (listener, addr)
+      val () = Socket.listen (listener, 128)
+
+      fun acceptLoop () =
+        Async.delay (fn () => Socket.accept listener) >>= (fn (conn, _) =>
+          (* fire-and-forget the connection handler on the scheduler *)
+          ( ignore (Async.start (Scheduler.current ()) (handleConn app conn))
+          ; acceptLoop () ))
+    in
+      acceptLoop ()
+    end
+end
+
+(* Example wiring (also not compiled):
+
+     val app = Web.make { middleware = [...], routes = [...], notFound = ... }
+     val () = ignore (Async.runToCompletion
+                        (Serve.serve { host = "0.0.0.0", port = 8080 } app))
+
+   The `app` value and everything it transitively calls is pure and fully
+   tested in the core repos; only `Serve` above touches the network. *)
