@@ -95,6 +95,13 @@ portable, reproducible core.
   decoder; encoding is documented as future work).
 - UTF-8 / surrogate handling at the edges.
 
+## The wider stack
+
+`sml-serve` is the impure edge of a layered set of small, pure, dual-compiler
+`sml-*` libraries topped by [`sml-web`](https://github.com/sjqtentacles/sml-web).
+Browse the whole project by the
+[`sjqtentacles-web`](https://github.com/topics/sjqtentacles-web) topic.
+
 ## License
 
 MIT
