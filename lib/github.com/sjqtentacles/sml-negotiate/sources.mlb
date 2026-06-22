@@ -1,0 +1,8 @@
+(* Source files for sml-negotiate. Vendors sml-http. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-http/sources.mlb
+
+negotiate.sig
+negotiate.sml

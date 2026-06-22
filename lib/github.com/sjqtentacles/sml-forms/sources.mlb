@@ -1,0 +1,9 @@
+(* Source files for sml-forms. Vendors sml-uri and sml-json (+ sml-parsec). *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-uri/sources.mlb
+../sml-json/sources.mlb
+
+forms.sig
+forms.sml

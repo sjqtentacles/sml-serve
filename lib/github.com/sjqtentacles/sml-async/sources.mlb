@@ -1,0 +1,17 @@
+(* Source files for the sml-async library, in dependency order.
+   This is a flat file list (the portable subset of the MLB format)
+   so it works with MLton directly and with our tools/polybuild wrapper.
+
+   Each .mlb is elaborated in an empty basis, so we explicitly pull in the
+   Standard ML Basis here to make this file self-contained. (polybuild skips
+   $(...) lines since Poly/ML loads the Basis automatically.) *)
+
+$(SML_LIB)/basis/basis.mlb
+
+result.sml
+scheduler.sig
+scheduler.sml
+future.sig
+future.sml
+async.sig
+async.sml

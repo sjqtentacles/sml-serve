@@ -1,0 +1,12 @@
+(* Source files for sml-session. Vendors sml-crypto (signed-cookie backend),
+   sml-random (session id generation), and sml-json (session serialization).
+   sml-cookie is also vendored as the intended companion at the HTTP edge. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-crypto/sources.mlb
+../sml-random/sources.mlb
+../sml-json/sources.mlb
+
+session.sig
+session.sml

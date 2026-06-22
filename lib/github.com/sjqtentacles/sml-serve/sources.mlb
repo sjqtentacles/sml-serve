@@ -1,0 +1,16 @@
+(* Source files for sml-serve: the impure, MLton-only socket adapter.
+
+   It vendors the pure umbrella `sml-web` and the `sml-async` event loop and
+   adds a single impure module, `serve.sml`, that opens sockets and moves
+   bytes between a real TCP listener and a pure `Web.app`.
+
+   This file is NOT portable to Poly/ML: `serve.sml` uses the MLton-supported
+   Basis `Socket`/`INetSock`/`NetHostDB` structures and a live network. There
+   is intentionally no `tools/polybuild` here. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-web/sources.mlb
+../sml-async/sources.mlb
+
+serve.sml

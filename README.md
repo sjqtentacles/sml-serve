@@ -1,13 +1,17 @@
-# sml-serve (documented, not built)
+# sml-serve
 
-> **Status: design document, not a buildable library.**
-> This repository deliberately ships no compilable SML and no `make`-able
-> target. It documents the one impure edge of the
+> **Status: a real, buildable, MLton-only socket adapter.**
+> This repository is the one impure edge of the
 > [sjqtentacles](https://github.com/sjqtentacles) pure-SML web stack: an
 > **MLton-only socket adapter** that drives an
 > [`sml-web`](https://github.com/sjqtentacles/sml-web) app against a real TCP
 > listener using the [`sml-async`](https://github.com/sjqtentacles/sml-async)
-> event loop.
+> event loop. It builds with `make`, ships a runnable demo, and is covered by
+> a loopback integration test.
+>
+> It was previously a design document; it is now an actual adapter. The single
+> impure module is quarantined exactly as the document described (see
+> [Quarantine](#quarantine-mlton-only-impure)).
 
 ## Why it's kept out of the core
 
@@ -47,45 +51,160 @@ graph LR
 The adapter is intentionally thin. Its whole job is to move bytes between a
 socket and a pure `Web.app`:
 
-1. **Listen.** Bind a `Socket.passiveStream` listener on a host/port.
-2. **Accept loop.** On the `sml-async` scheduler, accept connections and spawn
-   one async task per connection (`Async.start`), so slow clients don't block.
-3. **Read a request.** Read bytes until a complete HTTP message is framed —
+1. **Listen.** Bind a passive stream listener on a host/port (`Serve.listenOn`).
+2. **Accept loop.** On the `sml-async` scheduler, accept connections and start
+   one async task per connection (`Async.start`). The accept step is
+   trampolined through `Scheduler.soon`, so it runs in constant stack space.
+3. **Read a request.** Read bytes until a complete HTTP/1.1 message is framed —
    headers terminated by `\r\n\r\n`, then the body sized by `Content-Length` or
-   `Transfer-Encoding: chunked` (both already decoded purely by
-   `Http.decodeBody`).
-4. **Dispatch.** Hand the assembled request string to `Web.runString app`,
-   which runs the pure router + middleware pipeline and returns a `response`
-   (or `NONE` for a malformed message → emit a `400`).
-5. **Write a response.** `Http.serializeResponse` the result and write it back;
-   honor keep-alive vs. close per the request's `Connection` header and version.
+   `Transfer-Encoding: chunked` (chunked bodies are decoded purely by
+   `Http.decodeChunked`). Leftover bytes are kept for the next pipelined message.
+4. **Dispatch.** Parse the assembled request and run the pure router +
+   middleware pipeline via `Web.run`; a malformed message becomes a `400`.
+5. **Write a response.** `Http.serializeResponse` the result and write it back,
+   honoring keep-alive vs. close per the request's `Connection` header and
+   HTTP version. A `Content-Length` is added when the handler left the body
+   unframed, and the chosen `Connection` disposition is advertised.
 6. **Repeat / close.** Loop for keep-alive, or close the socket.
 
 Everything inside step 4 is pure and already fully tested in the core repos;
-steps 1–3, 5–6 are the only code that touches the outside world.
+steps 1–3, 5–6 are the only code that touches the outside world. The source is a
+single module, [`lib/github.com/sjqtentacles/sml-serve/serve.sml`](lib/github.com/sjqtentacles/sml-serve/serve.sml).
+
+## API
+
+The adapter exposes a `Serve` structure. The headline entry point is:
+
+```sml
+(* Bind a listener and serve a pure Web.app forever, accepting on the
+   sml-async scheduler and starting one async task per connection. *)
+val serve : { host : string, port : int } -> Web.app -> unit
+```
+
+Plus the building blocks it is made of, reused by the demo and the tests:
+
+```sml
+type sock = (INetSock.inet, Socket.active Socket.stream) Socket.sock
+
+(* Bind a passive listener; returns it with the port actually bound
+   (pass port = 0 to ask the OS for an ephemeral port). *)
+val listenOn  : { host : string, port : int }
+                -> (INetSock.inet, Socket.passive Socket.stream) Socket.sock * int
+
+(* Serve one accepted connection to completion: frame -> Web.run -> write,
+   looping while keep-alive holds, then close. *)
+val handleConn : Web.app -> sock -> unit Async.async
+
+val sendAll   : sock -> string -> unit
+val recvAll   : sock -> string
+```
+
+> On the `serve` signature: `sml-async` is a cooperative, single-threaded
+> scheduler with **no** OS-I/O integration (its clock is logical, not the wall
+> clock). So `serve` returns `unit` and blocks in `accept`; the README's
+> sketched `... -> unit async` shape would imply a runtime that interleaves
+> socket readiness, which this scheduler does not provide. We honor the async
+> structure (`handleConn` is a `unit Async.async`, started per connection via
+> `Async.start`, accept driven by `Scheduler`), while being honest that
+> connections are handled sequentially. See [Quarantine](#quarantine-mlton-only-impure).
+
+## Demo
+
+```sh
+make example          # self-contained loopback demo (binds an ephemeral port,
+                      # issues one real request to itself, prints it, exits)
+
+make serve            # build only; then run a real server:
+bin/serve-mlton serve 8080
+# ... and from another shell:  curl -i http://127.0.0.1:8080/greet/alice
+```
+
+`make example` is deterministic and prints:
+
+```
+=== sml-serve loopback demo ===
+request:  GET /greet/alice HTTP/1.1
+response over a real 127.0.0.1 socket:
+HTTP/1.1 200 OK
+Content-Type: text/html
+X-Powered-By: sml-serve
+Content-Length: 82
+Connection: close
+
+<html><head><title>Greeting</title></head><body><p>Hello, alice!</p></body></html>
+access log: GET /greet/alice -> 200
+```
+
+## Build & test
+
+```sh
+make          # build the demo + integration-test binaries (MLton)
+make smoke    # build + run the loopback integration test
+make clean
+```
+
+There are **no** `poly` / `test-poly` targets — see below.
+
+## Quarantine (MLton-only, impure)
+
+This repo is deliberately **outside** the dual-compiler, byte-identical purity
+guarantee that the rest of the stack provides:
+
+- **MLton-only.** `serve.sml` uses the Basis `Socket`/`INetSock`/`NetHostDB`
+  structures and a live network. The `Makefile` has no `poly`/`test-poly`
+  targets and there is no `tools/polybuild` wrapper.
+- **Impure.** It opens sockets, reads/writes bytes, and schedules connections.
+  Its tests are **integration tests against a loopback socket** (bind on
+  `127.0.0.1`, issue a request, assert the response) rather than the pure
+  `Harness` spec-vector checks used everywhere else. They require the local
+  loopback network, but no external hosts.
+- **Sequential, not concurrent.** Because `sml-async` is single-threaded with
+  no OS-I/O readiness, connections are accepted and handled one at a time. A
+  production adapter would need real non-blocking I/O / threads for that.
+
+Everything `sml-serve` *dispatches to* (`Web.run`, `Http.*`) stays pure and
+fully covered by the core repos' deterministic suites.
+
+## Dependencies
+
+`sml-web` (the umbrella, which itself vendors the tier-0/1/2 libraries) and
+`sml-async` are vendored byte-for-byte under
+`lib/github.com/sjqtentacles/`, committed, so `make` needs no network.
+
+```
+package github.com/sjqtentacles/sml-serve
+require {
+  github.com/sjqtentacles/sml-web
+  github.com/sjqtentacles/sml-async
+}
+```
+
+## Layout
+
+```
+lib/github.com/sjqtentacles/
+  sml-serve/
+    serve.sml            the adapter (the only impure module)
+    sources.mlb          basis + sml-web + sml-async + serve.sml
+    sml-serve.mlb        public library basis (MLton/MLKit)
+  sml-web/ sml-async/ ...  vendored dependencies (byte-for-byte)
+examples/
+  main.sml  serve.mlb    runnable demo (loopback round-trip + real server)
+test/
+  integration.sml        loopback integration suite (15 checks)
+  harness.sml entry.sml main.sml sources.mlb
+doc/serve.sml.txt        the original reference sketch (kept for history)
+Makefile
+```
 
 ## Reference sketch
 
-A non-compiled reference sketch of the adapter lives at
-[`doc/serve.sml.txt`](doc/serve.sml.txt). It is plain text on purpose — there is
-no `.mlb`, no `Makefile`, and no CI here, because this edge depends on MLton's
-`Socket`/`OS` structures and a running network, neither of which fits the
-deterministic test discipline the rest of the stack is built on.
-
-## Building a real adapter (for downstream users)
-
-A concrete `sml-serve` would:
-
-- `require` `sml-web` and `sml-async` and vendor them under `lib/` like every
-  other repo;
-- expose something like
-  `val serve : { host : string, port : int } -> Web.app -> unit async`;
-- be MLton-only (its `Makefile` would have no `poly`/`test-poly` targets), and
-  its tests would be integration tests against a loopback socket rather than the
-  pure `Harness` checks used everywhere else.
-
-That work is left to the deployment layer so the framework proper stays a clean,
-portable, reproducible core.
+The original non-compiled reference sketch is preserved at
+[`doc/serve.sml.txt`](doc/serve.sml.txt). The shipped `serve.sml` follows it
+closely, with real message framing (proper body sizing + pipelining), a
+trampolined accept loop, response framing/`Connection` normalization, and the
+corrected `sml-async` API (`Async.start`/`Scheduler` rather than the sketch's
+imagined `Scheduler.current`).
 
 ## Future work (consistent with the stack's documented follow-ups)
 
@@ -93,6 +212,9 @@ portable, reproducible core.
 - HTTP/2 and HTTP/3 (the core's framing is HTTP/1.1).
 - A real DEFLATE **encoder** for `Content-Encoding` (`sml-deflate` ships the
   decoder; encoding is documented as future work).
+- True concurrency (non-blocking I/O / threads), timeouts, connection limits,
+  backpressure, request-size caps (compose `Middleware.limitBody`), and
+  graceful shutdown.
 - UTF-8 / surrogate handling at the edges.
 
 ## The wider stack

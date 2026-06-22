@@ -1,3 +1,6 @@
 # OS / editor noise
 .DS_Store
 *~
+
+# build artifacts
+bin/

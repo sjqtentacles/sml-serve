@@ -1,0 +1,8 @@
+(* MLton basis file for the sml-glob library.
+ * Brings `structure Glob` (matching GLOB) into scope. *)
+local
+  $(SML_LIB)/basis/basis.mlb
+in
+  glob.sig
+  glob.sml
+end

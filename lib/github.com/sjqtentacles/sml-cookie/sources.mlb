@@ -1,0 +1,13 @@
+(* Source files for sml-cookie, in dependency order. Pulls in vendored
+   sml-http (cookies are an HTTP header concern), sml-crypto (signed cookies),
+   and sml-datetime (Expires formatting). *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-datetime/datetime.mlb
+../sml-crypto/sources.mlb
+
+cookie.sig
+cookie.sml
+signed.sig
+signed.sml

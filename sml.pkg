@@ -1,0 +1,6 @@
+package github.com/sjqtentacles/sml-serve
+
+require {
+  github.com/sjqtentacles/sml-web
+  github.com/sjqtentacles/sml-async
+}

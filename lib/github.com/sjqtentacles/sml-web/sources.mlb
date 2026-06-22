@@ -1,0 +1,16 @@
+(* Source files for sml-web (umbrella). Vendors the tier-2 web layer
+   libraries; shared lower-level deps (sml-http, sml-uri, sml-parsec, sml-json,
+   ...) are referenced through them and deduped by MLton/Poly's basis path
+   resolution. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-router/sources.mlb
+../sml-negotiate/sources.mlb
+../sml-html/sources.mlb
+../sml-forms/sources.mlb
+../sml-middleware/sources.mlb
+../sml-session/sources.mlb
+
+web.sig
+web.sml

@@ -1,0 +1,10 @@
+(* Source files for sml-middleware. Vendors sml-http (request/response model
+   + headers) and sml-glob (static-file path matching). *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-http/sources.mlb
+../sml-glob/glob.mlb
+
+middleware.sig
+middleware.sml

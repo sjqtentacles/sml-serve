@@ -1,0 +1,8 @@
+(* Demo executable basis: the adapter (which itself vendors sml-web + sml-async)
+   plus the runnable demo. MLton-only. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../lib/github.com/sjqtentacles/sml-serve/sources.mlb
+
+main.sml

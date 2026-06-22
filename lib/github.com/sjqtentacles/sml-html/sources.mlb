@@ -1,0 +1,10 @@
+(* Source files for sml-html. Vendors sml-buffer. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-buffer/sources.mlb
+
+escape.sig
+escape.sml
+html.sig
+html.sml

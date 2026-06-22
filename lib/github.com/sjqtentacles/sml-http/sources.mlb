@@ -1,0 +1,12 @@
+(* Source files for sml-http, in dependency order. Vendors sml-uri. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-uri/sources.mlb
+
+headers.sig
+headers.sml
+status.sig
+status.sml
+http.sig
+http.sml

@@ -1,0 +1,8 @@
+(* Vendored sml-json sources: the parsec core plus JSON parser + serializer. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-parsec/parsec.mlb
+
+json.sml
+jsonPretty.sml

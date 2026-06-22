@@ -1,0 +1,8 @@
+(* Source files for sml-router. Vendors sml-http (which vendors sml-uri). *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../sml-http/sources.mlb
+
+router.sig
+router.sml

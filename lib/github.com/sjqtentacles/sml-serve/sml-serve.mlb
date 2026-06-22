@@ -1,0 +1,9 @@
+(* sml-serve: public library basis (MLton / MLKit only).
+
+   Exposes the Standard ML Basis plus the adapter sources. Because the adapter
+   is impure and socket-bound, this basis is MLton-only; there is no Poly/ML
+   wrapper. Consumers reference this file from their own .mlb. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+sources.mlb

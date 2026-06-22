@@ -1,0 +1,8 @@
+(* MLton basis file for the sml-datetime library.
+ * Brings `structure DateTime` (matching DATETIME) into scope. *)
+local
+  $(SML_LIB)/basis/basis.mlb
+in
+  datetime.sig
+  datetime.sml
+end

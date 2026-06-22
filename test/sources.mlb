@@ -1,0 +1,11 @@
+(* Test executable basis: the adapter (with its vendored sml-web + sml-async)
+   plus the loopback integration suite. MLton-only. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../lib/github.com/sjqtentacles/sml-serve/sources.mlb
+
+harness.sml
+integration.sml
+entry.sml
+main.sml
