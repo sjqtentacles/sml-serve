@@ -91,7 +91,14 @@ struct
         | NONE =>
             (case Headers.get headers "Content-Length" of
                  SOME lenStr =>
-                   (case Int.fromString lenStr of
+                   (* Parse the length via `IntInf` and bound to the portable
+                      signed-32-bit range, so an oversized Content-Length is
+                      treated as absent (NONE) identically on both compilers
+                      rather than raising `Overflow` under MLton's 32-bit `int`. *)
+                   (case (case IntInf.fromString lenStr of
+                              SOME i => if i >= ~2147483648 andalso i <= 2147483647
+                                        then SOME (IntInf.toInt i) else NONE
+                            | NONE => NONE) of
                         SOME n =>
                           if n < 0 then SOME { body = "", rest = afterHead }
                           else if String.size afterHead >= n

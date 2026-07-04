@@ -34,7 +34,12 @@ struct
         CharParsec.Ok (Json.JObj fields) =>
           let
             fun conv (k, Json.JStr v) = SOME (k, v)
-              | conv (k, Json.JInt n) = SOME (k, Int.toString n)
+              (* Json.JInt now carries an arbitrary-precision IntInf.int (upstream
+                 sml-json widened it to fix an Overflow crash on large integers).
+                 IntInf.toString renders it losslessly and identically under MLton
+                 (fixed-width default int) and Poly/ML (fixed-width 63-bit int) --
+                 both would overflow Int.toString on a value past their Int range. *)
+              | conv (k, Json.JInt n) = SOME (k, IntInf.toString n)
               | conv (k, Json.JBool b) = SOME (k, Bool.toString b)
               | conv _ = NONE
           in

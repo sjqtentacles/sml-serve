@@ -6,6 +6,7 @@
 
 fun runAllSuites () =
   ( Harness.reset ()
+  ; JsonBoundaryTests.run ()
   ; IntegrationTests.run ()
   ; Harness.run () )
 

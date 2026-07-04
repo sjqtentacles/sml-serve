@@ -22,7 +22,7 @@ struct
       fun valueToString v =
         case v of
             Json.JStr s => SOME s
-          | Json.JInt i => SOME (Int.toString i)
+          | Json.JInt i => SOME (IntInf.toString i)  (* JInt is IntInf.int (arbitrary precision) *)
           | Json.JReal r => SOME (Real.toString r)
           | Json.JBool b => SOME (Bool.toString b)
           | _ => NONE
@@ -66,7 +66,14 @@ struct
         else ("", s)
     in
       if digits <> "" andalso CharVector.all Char.isDigit digits
-      then Int.fromString (if sign = "-" then "~" ^ digits else digits)
+      (* Parse via `IntInf` (never overflows) and bound to the portable signed
+         32-bit range, so an oversized field value yields NONE identically on
+         MLton and Poly/ML rather than raising `Overflow` under MLton's 32-bit
+         `int`. *)
+      then (case IntInf.fromString (if sign = "-" then "~" ^ digits else digits) of
+                SOME n => if n >= ~2147483648 andalso n <= 2147483647
+                          then SOME (IntInf.toInt n) else NONE
+              | NONE => NONE)
       else NONE
     end
 

@@ -138,26 +138,35 @@ access log: GET /greet/alice -> 200
 ## Build & test
 
 ```sh
-make          # build the demo + integration-test binaries (MLton)
-make smoke    # build + run the loopback integration test
+make           # build the demo + integration-test binaries (MLton)
+make smoke     # build + run the loopback integration test (MLton)
+make test-poly # build + run the pure vendored-sml-json suite under Poly/ML
+make all-tests # smoke + the pure suite on both compilers, byte-identical
 make clean
 ```
 
-There are **no** `poly` / `test-poly` targets — see below.
+The socket adapter and its loopback **integration** suite are MLton-only (see
+below). The one exception is the small **pure** vendored-`sml-json` integer
+boundary suite in `test/pure/`: it does no I/O, so it builds and runs under
+both MLton and Poly/ML (the latter via `tools/polybuild`) and its output is
+byte-identical across the two — `make all-tests` asserts exactly that.
 
 ## Quarantine (MLton-only, impure)
 
 This repo is deliberately **outside** the dual-compiler, byte-identical purity
 guarantee that the rest of the stack provides:
 
-- **MLton-only.** `serve.sml` uses the Basis `Socket`/`INetSock`/`NetHostDB`
-  structures and a live network. The `Makefile` has no `poly`/`test-poly`
-  targets and there is no `tools/polybuild` wrapper.
+- **MLton-only adapter.** `serve.sml` uses the Basis `Socket`/`INetSock`/
+  `NetHostDB` structures and a live network; the adapter itself and its
+  integration binary are built only by MLton. (The `tools/polybuild` wrapper and
+  the `test-poly` target exist solely for the *pure* boundary suite described
+  below, which never touches `serve.sml`.)
 - **Impure.** It opens sockets, reads/writes bytes, and schedules connections.
-  Its tests are **integration tests against a loopback socket** (bind on
-  `127.0.0.1`, issue a request, assert the response) rather than the pure
-  `Harness` spec-vector checks used everywhere else. They require the local
-  loopback network, but no external hosts.
+  Its integration tests are **integration tests against a loopback socket**
+  (bind on `127.0.0.1`, issue a request, assert the response) rather than the
+  pure `Harness` spec-vector checks used everywhere else. They require the local
+  loopback network, but no external hosts. The separate `test/pure/` suite *is*
+  a pure `Harness` spec-vector suite and does run on both compilers.
 - **Sequential, not concurrent.** Because `sml-async` is single-threaded with
   no OS-I/O readiness, connections are accepted and handled one at a time. A
   production adapter would need real non-blocking I/O / threads for that.
@@ -191,11 +200,26 @@ lib/github.com/sjqtentacles/
 examples/
   main.sml  serve.mlb    runnable demo (loopback round-trip + real server)
 test/
-  integration.sml        loopback integration suite (15 checks)
+  integration.sml        loopback integration suite (15 checks, MLton-only)
+  json_boundary.sml      pure vendored-sml-json integer boundary suite (7 checks)
   harness.sml entry.sml main.sml sources.mlb
+  pure/                  pure suite as a standalone dual-compiler binary
+    entry.sml main.sml sources.mlb
+tools/polybuild          Poly/ML .mlb driver (for the pure suite only)
 doc/serve.sml.txt        the original reference sketch (kept for history)
 Makefile
 ```
+
+## A note on JSON integer precision
+
+The vendored `sml-json` carries JSON integers as `JInt of IntInf.int`
+(arbitrary precision), not a machine `int`. A large integer field — a
+millisecond epoch timestamp such as `1700000000000`, a 64-bit id — therefore
+parses and serializes **losslessly and identically** under MLton (whose default
+`int` is a fixed-width 32-bit word) and Poly/ML (fixed-width 63-bit); a naive
+machine-`int` payload would raise `Overflow` under MLton past ~2³¹. The
+`test/pure/` suite pins this behaviour and, being pure, proves it byte-for-byte
+on both compilers.
 
 ## Reference sketch
 

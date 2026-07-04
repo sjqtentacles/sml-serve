@@ -1,0 +1,19 @@
+(* Pure, dual-compiler test basis for sml-serve.
+
+   Unlike ../sources.mlb (which links the impure, socket-bound adapter and its
+   loopback integration suite, and is therefore MLton-only), this basis pulls
+   in ONLY the pure vendored sml-json chain plus the integer-boundary suite.
+   It builds and runs identically under MLton and Poly/ML (via tools/polybuild),
+   so its output is byte-identical across both compilers.
+
+   The sml-json sources.mlb brings the vendored sml-parsec core with it, so
+   `Json`, `JsonPretty`, and `CharParsec` are all in scope. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+../../lib/github.com/sjqtentacles/sml-json/sources.mlb
+
+../harness.sml
+../json_boundary.sml
+entry.sml
+main.sml

@@ -6,6 +6,7 @@ $(SML_LIB)/basis/basis.mlb
 ../lib/github.com/sjqtentacles/sml-serve/sources.mlb
 
 harness.sml
+json_boundary.sml
 integration.sml
 entry.sml
 main.sml

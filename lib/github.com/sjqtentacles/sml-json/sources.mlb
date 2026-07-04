@@ -4,5 +4,6 @@ $(SML_LIB)/basis/basis.mlb
 
 ../sml-parsec/parsec.mlb
 
+json.sig
 json.sml
 jsonPretty.sml
