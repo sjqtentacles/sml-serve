@@ -36,6 +36,18 @@ struct
   fun trim s =
     Substring.string (Substring.dropr Char.isSpace (Substring.dropl Char.isSpace (Substring.full s)))
 
+  (* Parse an int from untrusted input without ever raising Overflow. On this
+     toolchain MLton's Int is 32-bit and Poly/ML's is 63-bit (both fixed
+     width; only IntInf is arbitrary), so a plain Int.fromString raises
+     Overflow on MLton for a value past 2^31 while Poly/ML would accept it:
+     a crash and a cross-compiler divergence. Parse via IntInf and bound to a
+     fixed 32-bit signed range so both compilers behave identically. *)
+  fun parseIntBounded s =
+    case IntInf.fromString s of
+        SOME n => if n >= ~2147483648 andalso n <= 2147483647
+                  then SOME (IntInf.toInt n) else NONE
+      | NONE => NONE
+
   (* Parse "Name: value" -> (Name, value), trimming OWS around value. *)
   fun parseHeaderLine line =
     case Substring.position ":" (Substring.full line) of
@@ -86,7 +98,7 @@ struct
         | (start :: rest) =>
             (case words3 start of
                  SOME (version, codeStr, reason) =>
-                   (case Int.fromString codeStr of
+                   (case parseIntBounded codeStr of
                         SOME code =>
                           (case parseHeaderLines rest of
                                SOME hs => SOME { version = version, status = code,
@@ -125,6 +137,32 @@ struct
       (Headers.fromList [("Content-Type", "text/plain; charset=utf-8"),
                          ("Content-Length", Int.toString (String.size body))])
       body
+
+  fun html body =
+    response 200
+      (Headers.fromList [("Content-Type", "text/html; charset=utf-8"),
+                         ("Content-Length", Int.toString (String.size body))])
+      body
+
+  fun redirectWith code location =
+    response code (Headers.fromList [("Location", location)]) ""
+
+  fun redirect location = redirectWith 302 location
+
+  fun request' method target headers body =
+    { method = method, target = target, version = "HTTP/1.1"
+    , headers = headers, body = body }
+
+  fun get target = request' "GET" target Headers.empty ""
+  fun delete target = request' "DELETE" target Headers.empty ""
+
+  fun withBody method target body =
+    request' method target
+      (Headers.fromList [("Content-Length", Int.toString (String.size body))])
+      body
+
+  fun post target body = withBody "POST" target body
+  fun put target body = withBody "PUT" target body
 
   (* ---- framing ---- *)
 
@@ -219,7 +257,7 @@ struct
       | NONE =>
           (case Headers.get headers "Content-Length" of
                SOME lenStr =>
-                 (case Int.fromString (trim lenStr) of
+                 (case parseIntBounded (trim lenStr) of
                       SOME len =>
                         if len <= String.size raw
                         then SOME (String.substring (raw, 0, len))

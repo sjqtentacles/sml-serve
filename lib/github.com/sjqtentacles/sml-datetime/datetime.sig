@@ -31,6 +31,62 @@ sig
 
   val dayOfWeek : date -> int                (* 0 = Sunday .. 6 = Saturday *)
 
-  val parseISO  : string -> date option      (* strict YYYY-MM-DD *)
+  val parseISO  : string -> date option      (* strict YYYY-MM-DD; year bounded
+                                                to signed 32-bit, else NONE *)
   val formatISO : date -> string             (* zero-padded YYYY-MM-DD *)
+
+  (* ---- Time of day -------------------------------------------------------
+     A wall-clock time with nanosecond resolution. Like `date`, a `time` is a
+     plain record: hour 0-23, minute 0-59, second 0-59 (no leap seconds), and
+     nano 0-999999999. Sub-day totals (nanoOfDay) and instant/duration values
+     use LargeInt.int so they stay exact even where the default int is 32-bit
+     (e.g. MLton); the small record fields remain plain int. *)
+  type time = { hour : int, minute : int, second : int, nano : int }
+
+  val midnight    : time                      (* 00:00:00.000000000 *)
+  val isValidTime : time -> bool
+
+  val secondOfDay : time -> int               (* whole seconds since midnight; raises Invalid if invalid *)
+  val nanoOfDay   : time -> LargeInt.int      (* nanoseconds since midnight; raises Invalid if invalid *)
+  val timeFromNanoOfDay : LargeInt.int -> time  (* inverse of nanoOfDay; 0 <= n < 86400 * 1e9 *)
+
+  (* ---- Datetime / instant (UTC) ------------------------------------------
+     A `datetime` pairs a civil `date` with a wall-clock `time`, interpreted as
+     an instant in UTC. There is no timezone database; ISO offsets are folded
+     into UTC at parse time (see parseDateTimeISO). *)
+  type datetime = { date : date, time : time }
+
+  val isValidDateTime : datetime -> bool
+
+  (* Seconds since 1970-01-01T00:00:00Z. toEpochSecond drops sub-second
+     precision; fromEpochSecond yields nano = 0. *)
+  val toEpochSecond   : datetime -> LargeInt.int  (* raises Invalid on an invalid datetime *)
+  val fromEpochSecond : LargeInt.int -> datetime
+
+  (* ---- Durations ---------------------------------------------------------
+     A signed elapsed time, normalized so that 0 <= nanos < 1e9 (the seconds
+     field carries the sign). E.g. -0.5s is { seconds = ~1, nanos = 500000000 }. *)
+  type duration = { seconds : LargeInt.int, nanos : int }
+
+  val durationFromSeconds : LargeInt.int -> duration
+  val durationToSeconds   : duration -> LargeInt.int  (* whole seconds, floored toward negative infinity *)
+  val normalizeDuration   : LargeInt.int * LargeInt.int -> duration  (* (seconds, nanos), any nanos -> normalized *)
+
+  val negateDuration : duration -> duration
+  val addDurations   : duration * duration -> duration
+  val subDurations   : duration * duration -> duration  (* a - b *)
+  val scaleDuration  : duration * int -> duration
+
+  val addDuration : datetime * duration -> datetime
+  val subDuration : datetime * duration -> datetime
+  val diff        : datetime * datetime -> duration     (* a - b *)
+
+  (* ---- ISO 8601 datetime -------------------------------------------------
+     parseDateTimeISO accepts YYYY-MM-DDThh:mm:ss[.fff][Z|+hh:mm|-hh:mm].
+     A trailing offset is subtracted to normalize the instant to UTC; a missing
+     offset is treated as UTC. Fractional seconds may have 1-9 digits.
+     formatDateTimeISO always emits UTC with a trailing 'Z', printing a
+     fractional part only when nano <> 0 (trailing zeros trimmed). *)
+  val parseDateTimeISO  : string -> datetime option
+  val formatDateTimeISO : datetime -> string
 end

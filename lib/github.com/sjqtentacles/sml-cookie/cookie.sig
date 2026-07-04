@@ -34,7 +34,10 @@ sig
 
   (* Serialize a Set-Cookie value (without the "Set-Cookie:" prefix). *)
   val build : set_cookie -> string
-  (* Parse a Set-Cookie value back into a record. NONE if there's no name=val. *)
+  (* Parse a Set-Cookie value back into a record. NONE if there's no name=val.
+     A Max-Age is kept only when it parses within the signed 32-bit range;
+     otherwise `maxAge` is NONE (an oversized value never overflows the default
+     `int`). *)
   val parseSetCookie : string -> set_cookie option
 
   (* Format an IMF-fixdate ("Sun, 06 Nov 1994 08:49:37 GMT") for `Expires`,

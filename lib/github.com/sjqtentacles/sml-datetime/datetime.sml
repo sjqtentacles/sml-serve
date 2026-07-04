@@ -91,6 +91,19 @@ struct
   fun formatISO {year, month, day} =
       pad4 year ^ "-" ^ pad2 month ^ "-" ^ pad2 day
 
+  (* Parse a decimal string to a default-`int` value, returning NONE if it is
+     out of the fixed 32-bit range. `Int.fromString` RAISES Overflow past 2^31
+     on a 32-bit `int` (MLton) while accepting far larger values on a 63-bit
+     `int` (Poly/ML) -- both a crash and a cross-compiler divergence on
+     untrusted input. Going through IntInf and bounds-checking makes the parse
+     total and byte-identical across compilers. *)
+  fun intInBounds s =
+      (case IntInf.fromString s of
+           SOME n =>
+             if n >= ~2147483648 andalso n <= 2147483647
+             then SOME (IntInf.toInt n) else NONE
+         | NONE => NONE)
+
   (* strict: optional leading '-', then 4+ year digits, '-', 2 month, '-', 2 day *)
   fun parseISO s =
       let
@@ -107,7 +120,9 @@ struct
                  andalso allDigits ms andalso String.size ms = 2
                  andalso allDigits ds andalso String.size ds = 2
               then
-                (case (Int.fromString ys, Int.fromString ms, Int.fromString ds) of
+                (* ys can be arbitrarily long, so bound it; ms/ds are exactly
+                   two digits and cannot overflow. *)
+                (case (intInBounds ys, Int.fromString ms, Int.fromString ds) of
                      (SOME y, SOME m, SOME d) =>
                        let val date = {year = if neg then ~y else y, month = m, day = d}
                        in if isValid date then SOME date else NONE end

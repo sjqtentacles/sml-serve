@@ -74,6 +74,19 @@ struct
 
   fun lower s = String.map Char.toLower s
 
+  (* Parse a Max-Age value to the default `int`, returning NONE when it is out
+     of the signed 32-bit range. `Int.fromString` RAISES Overflow past 2^31 on
+     a 32-bit `int` (MLton) yet accepts far larger values on a 63-bit `int`
+     (Poly/ML): an untrusted oversized Max-Age would crash one compiler and
+     diverge on the other. Going through IntInf and bounds-checking keeps the
+     parse total; an out-of-range Max-Age is NONE, as for any unparseable one. *)
+  fun parseMaxAge v =
+      (case IntInf.fromString v of
+           SOME n =>
+             if n >= ~2147483648 andalso n <= 2147483647
+             then SOME (IntInf.toInt n) else NONE
+         | NONE => NONE)
+
   fun parseSetCookie header =
     let
       val segs = List.filter (fn s => trim s <> "")
@@ -106,7 +119,7 @@ struct
                                          , sameSite = #sameSite acc }
                            | "max-age" => { name = #name acc, value = #value acc
                                           , path = #path acc, domain = #domain acc
-                                          , maxAge = Int.fromString v, expires = #expires acc
+                                          , maxAge = parseMaxAge v, expires = #expires acc
                                           , secure = #secure acc, httpOnly = #httpOnly acc
                                           , sameSite = #sameSite acc }
                            | "expires" => { name = #name acc, value = #value acc
