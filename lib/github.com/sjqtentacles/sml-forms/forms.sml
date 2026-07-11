@@ -13,6 +13,33 @@ struct
 
   fun fromUrlEncoded s = fromPairs (Query.parse s)
 
+  (* Deterministic real formatting: Real.toString differs between MLton and
+     Poly/ML (e.g. "30" vs "30.0"). Searches Real.fmt FIX(0), FIX(1), ... for
+     the first fixed-decimal rendering that reparses to the same real
+     (Real.fmt is byte-identical across both compilers); falls back to
+     scientific notation past 15 fixed digits. *)
+  fun fmtRealDet (r : real) : string =
+    if Real.isNan r then "nan"
+    else if Real.== (r, Real.posInf) then "inf"
+    else if Real.== (r, Real.negInf) then "~inf"
+    else
+      let
+        val neg = r < 0.0
+        val a = Real.abs r
+        fun tryDigits n =
+          if n > 15 then NONE
+          else
+            let val s = Real.fmt (StringCvt.FIX (SOME n)) a
+            in case Real.fromString s of
+                   SOME a' => if Real.== (a', a) then SOME s else tryDigits (n + 1)
+                 | NONE => tryDigits (n + 1)
+            end
+        val body =
+          case tryDigits 0 of
+              SOME s => s
+            | NONE => Real.fmt (StringCvt.SCI (SOME 16)) a
+      in if neg then "~" ^ body else body end
+
   fun fromJson json =
     let
       val members =
@@ -23,7 +50,7 @@ struct
         case v of
             Json.JStr s => SOME s
           | Json.JInt i => SOME (IntInf.toString i)  (* JInt is IntInf.int (arbitrary precision) *)
-          | Json.JReal r => SOME (Real.toString r)
+          | Json.JReal r => SOME (fmtRealDet r)
           | Json.JBool b => SOME (Bool.toString b)
           | _ => NONE
     in
