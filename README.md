@@ -1,5 +1,7 @@
 # sml-serve
 
+[![CI](https://github.com/sjqtentacles/sml-serve/actions/workflows/ci.yml/badge.svg)](https://github.com/sjqtentacles/sml-serve/actions/workflows/ci.yml)
+
 > **Status: a real, buildable, MLton-only socket adapter.**
 > This repository is the one impure edge of the
 > [sjqtentacles](https://github.com/sjqtentacles) pure-SML web stack: an
